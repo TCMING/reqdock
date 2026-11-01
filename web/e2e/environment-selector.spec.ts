@@ -1,0 +1,54 @@
+import {resolve} from '../src/EnvironmentSelector';
+import {test,expect} from '@playwright/test';
+import {execFileSync} from 'node:child_process';
+import path from 'node:path';
+import {chooseEnvironment} from './helpers';
+const root=path.resolve('..');
+test('右上角环境选择按请求地址自动匹配，缺少地址时禁止发送',async({page})=>{
+ await page.goto('/');
+ const code=execFileSync(path.join(root,'.venv/Scripts/python.exe'),['-m','api_post','pair','--port','18767','--workspace',process.env.API_LAB_E2E_WORKSPACE!],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();
+ await page.getByLabel('本机配对码').fill(code);await page.getByRole('button',{name:'连接工作区'}).click();
+ const envs=await (await page.request.get('/api/environments')).json();
+ const expected=(group:string,variable:string)=>envs.find((e:any)=>e.name==='AI服务平台 / '+group+' / '+variable).base_url;
+ await page.getByLabel('请求路径',{exact:true}).fill('{{ibrain-common}}/echo');
+ await chooseEnvironment(page,'线上环境');
+ await expect(page.getByLabel('最终地址',{exact:true})).toHaveText(expected('线上环境','ibrain-common'));
+ await expect(page.getByRole('combobox',{name:'服务变量',exact:true})).toHaveCount(0);
+ const envBox=await page.getByRole('combobox',{name:'执行环境',exact:true}).boundingBox(),newBox=await page.getByRole('button',{name:'＋ 新建环境',exact:true}).boundingBox();
+ expect(envBox!.x).toBeLessThan(newBox!.x);expect(envBox!.y+envBox!.height).toBeCloseTo(newBox!.y+newBox!.height,0);
+ await chooseEnvironment(page,'测试环境');
+ await expect(page.getByLabel('最终地址',{exact:true})).toHaveText(expected('测试环境','ibrain-common'));
+ await page.getByLabel('请求路径',{exact:true}).fill('{{aibots-common}}/echo');
+ await expect(page.getByLabel('最终地址',{exact:true})).toHaveText(expected('测试环境','aibots-common'));
+ await chooseEnvironment(page,'海外测试环境');
+ await expect(page.locator('.env-description')).toContainText('未配置 {{aibots-common}}');
+ await expect(page.getByRole('button',{name:'发送请求'})).toBeDisabled();
+ await expect(page.getByLabel('最终地址',{exact:true})).toHaveCount(0);
+ await expect(page.getByRole('combobox',{name:'执行环境',exact:true})).toContainText('海外测试环境');
+ await page.getByLabel('请求路径',{exact:true}).fill('{{ibrain-common}}/echo');
+ await expect(page.getByLabel('最终地址',{exact:true})).toHaveText(expected('海外测试环境','ibrain-common'));
+ await chooseEnvironment(page,'本地环境');
+ await expect(page.getByLabel('最终地址',{exact:true})).toHaveText(expected('本地环境','ibrain-common'));
+ await page.getByLabel('请求路径',{exact:true}).fill('/echo');
+ await expect(page.getByRole('button',{name:'发送请求'})).toBeDisabled();await expect(page.locator('.env-description')).toContainText('无法唯一确定');
+ await page.getByLabel('请求路径',{exact:true}).fill(expected('本地环境','aibots-common')+'/echo');
+ await expect(page.getByLabel('最终地址',{exact:true})).toHaveText(expected('本地环境','aibots-common'));
+ await chooseEnvironment(page,'测试环境');
+ await page.getByRole('button',{name:'用例库',exact:false}).first().click();await page.getByLabel('搜索用例',{exact:true}).fill('gemini fixture');
+ await page.locator('tbody tr').filter({hasText:'gemini fixture'}).getByRole('button',{name:'载入',exact:false}).click();
+ await expect(page.getByRole('combobox',{name:'执行环境',exact:true})).toContainText('测试环境');
+ await expect(page.getByLabel('最终地址',{exact:true})).toHaveText(expected('测试环境','ibrain-common'));
+ await page.screenshot({path:path.join(root,'workspace/qa/environment-selector.png'),fullPage:true});
+});
+
+
+test('自动匹配不以尾部斜杠区分凭证，显式地址变量优先',()=>{
+ const members=[{variable:'a',connection:{id:'a',name:'a',base_url:'https://example.invalid/v1',network_scope:'public',credential_ref:'first'}},{variable:'b',connection:{id:'b',name:'b',base_url:'https://example.invalid/v1/',network_scope:'public',credential_ref:'second'}}];
+ const group={key:'x',label:'test',kind:'server' as const,members};
+ expect(resolve(group,'https://example.invalid/v1/chat').id).toBe('');
+ expect(resolve(group,'{{a}}/chat').id).toBe('a');
+ expect(resolve(group,'/chat').id).toBe('');
+ const variableCredentials={...group,members:members.map((m,i)=>({...m,connection:{...m.connection,base_url:'https://example.invalid',credential_ref:null,variables:{api_key:'fixture-'+i}}}))};
+ expect(resolve(variableCredentials,'https://example.invalid/chat').id).toBe('');
+ expect(resolve({...group,members:[members[0]]},'{{base_url}}/chat').id).toBe('a');
+});

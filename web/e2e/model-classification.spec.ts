@@ -1,0 +1,23 @@
+import {test,expect} from '@playwright/test';
+import {execFileSync} from 'node:child_process';
+import path from 'node:path';
+test('按实际请求模型系列归类，不按接口名称猜测',async({page})=>{
+ const root=path.resolve('..');await page.goto('/');
+ const code=execFileSync(path.join(root,'.venv/Scripts/python.exe'),['-m','api_post','pair','--port','18767','--workspace',process.env.API_LAB_E2E_WORKSPACE!],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();
+ await page.getByLabel('本机配对码').fill(code);await page.getByRole('button',{name:'连接工作区'}).click();
+ const session=await (await page.request.get('/api/auth/session')).json();
+ const response=await page.request.post('/api/cases',{headers:{Origin:'http://127.0.0.1:18767','X-CSRF-Token':session.csrf},data:{group:'模型分类验证/旧业务',request:{name:'标题写Qwen',path:'/echo',body:'{"model":"DeepSeek-V3.2"}'}}});
+ expect(response.ok()).toBeTruthy();const original=await response.json();
+ await page.getByRole('button',{name:'用例库',exact:false}).first().click();
+ await page.getByRole('button',{name:'按模型系列归类',exact:true}).click();
+ await expect(page.locator('.case-library .notice')).toContainText('已按请求中的模型系列调整');
+ const current=await (await page.request.get('/api/cases/'+original.id)).json();
+ expect(current.request).toEqual(original.request);expect(current.modules[0]).toMatchObject({name:'模型分类验证',groups:['DeepSeek']});
+ await page.getByRole('combobox',{name:'用例模块',exact:true}).click();
+ await page.getByRole('option',{name:'模型分类验证（1）',exact:true}).click();
+ await page.getByRole('combobox',{name:'用例业务',exact:true}).click();
+ await expect(page.getByRole('option',{name:'DeepSeek',exact:true})).toBeVisible();
+ await expect(page.getByRole('option',{name:'旧业务',exact:true})).toHaveCount(0);
+ await page.getByRole('option',{name:'DeepSeek',exact:true}).click();
+ await expect(page.locator('.case-library tbody')).toContainText('标题写Qwen');
+});

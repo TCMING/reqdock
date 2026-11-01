@@ -1,0 +1,14 @@
+import React,{useEffect,useId,useRef,useState} from 'react';
+type Option={value:string;label:string};
+export default function SearchSelect({label,value,options,onChange}:{label:string;value:string;options:Option[];onChange:(value:string)=>void}){
+ const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[active,setActive]=useState(0);
+ const root=useRef<HTMLDivElement>(null),trigger=useRef<HTMLButtonElement>(null),input=useRef<HTMLInputElement>(null),list=useRef<HTMLDivElement>(null),id=useId();
+ const filtered=options.filter(o=>o.label.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+ const selected=options.find(o=>o.value===value);
+ useEffect(()=>{if(!open)return;input.current?.focus();function outside(e:PointerEvent){if(!root.current?.contains(e.target as Node))setOpen(false);}document.addEventListener('pointerdown',outside);return()=>document.removeEventListener('pointerdown',outside);},[open]);
+ useEffect(()=>{list.current?.querySelector<HTMLElement>('[data-active="true"]')?.scrollIntoView({block:'nearest'});},[active,query,open]);
+ function close(){setOpen(false);trigger.current?.focus();}
+ function choose(option:Option){onChange(option.value);close();}
+ function keys(e:React.KeyboardEvent){if(e.key==='Escape'){e.preventDefault();close();}else if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();setActive(n=>Math.max(0,Math.min(filtered.length-1,n+(e.key==='ArrowDown'?1:-1))));}else if(e.key==='Enter'&&filtered[active]){e.preventDefault();choose(filtered[active]);}else if(e.key==='Tab')setOpen(false);}
+ return <div className="search-select" ref={root}><button type="button" ref={trigger} className="select-trigger" role="combobox" aria-label={label} aria-haspopup="listbox" aria-controls={id+'-list'} aria-expanded={open} title={selected?.label} onClick={()=>{setOpen(v=>!v);setQuery('');setActive(Math.max(0,options.findIndex(o=>o.value===value)));}} onKeyDown={e=>{if(e.key==='ArrowDown'){e.preventDefault();setOpen(true);setActive(0);setQuery('');}}}><span>{selected?.label||'请选择'}</span><span aria-hidden="true">⌄</span></button>{open&&<div className="select-popover"><input ref={input} aria-label={'搜索'+label} placeholder="输入关键词筛选…" value={query} onChange={e=>{setQuery(e.target.value);setActive(0);}} onKeyDown={keys} aria-controls={id+'-list'} aria-activedescendant={filtered[active]?id+'-option-'+active:undefined}/><div id={id+'-list'} role="listbox" aria-label={label+'列表'} ref={list} className="select-options">{filtered.map((o,i)=><div key={o.value} id={id+'-option-'+i} role="option" aria-selected={o.value===value} data-active={active===i} title={o.label} onMouseEnter={()=>setActive(i)} onMouseDown={e=>e.preventDefault()} onClick={()=>choose(o)}>{o.label}{o.value===value&&<span aria-hidden="true"> ✓</span>}</div>)}{!filtered.length&&<p className="muted">没有匹配分组</p>}</div><small>{filtered.length} 个选项</small></div>}</div>;
+}

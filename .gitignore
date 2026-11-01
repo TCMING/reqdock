@@ -1,0 +1,28 @@
+# Private runtime data and credentials
+workspace/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db
+*.log
+*.ncx
+# Generated files
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+*.exe
+.DS_Store
+Thumbs.db

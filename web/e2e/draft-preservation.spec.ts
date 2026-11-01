@@ -1,0 +1,31 @@
+import {test,expect} from '@playwright/test';
+import {execFileSync} from 'node:child_process';
+import path from 'node:path';
+import {chooseEnvironment,chooseDemoEnvironment} from './helpers';
+
+test('结果示例只展示返回格式，不改请求、环境或保存目标',async({page})=>{
+ const root=path.resolve('..');await page.goto('/');
+ const code=execFileSync(path.join(root,'.venv/Scripts/python.exe'),['-m','api_post','pair','--port','18767','--workspace',process.env.API_LAB_E2E_WORKSPACE!],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();
+ await page.getByLabel('本机配对码').fill(code);await page.getByRole('button',{name:'连接工作区'}).click();
+ const session=await (await page.request.get('/api/auth/session')).json(),headers={Origin:'http://127.0.0.1:18767','X-CSRF-Token':session.csrf};
+ const response=await page.request.post('/api/cases',{headers,data:{group:'草稿保护/DeepSeek',request:{name:'draft preservation fixture',path:'{{ibrain-common}}/v1/chat/completions',body:'{"model":"DeepSeek-v4-flash-al"}'}}});expect(response.ok()).toBeTruthy();const original=await response.json();
+ await page.getByRole('button',{name:'用例库',exact:false}).first().click();await page.getByLabel('搜索用例',{exact:true}).fill(original.name);
+ await page.locator('tbody tr').filter({hasText:original.name}).getByRole('button',{name:'载入',exact:false}).click();await chooseEnvironment(page,'测试环境');
+ const editedPath='{{ibrain-common}}/v1/chat/completions?edited=1',editedBody='{"model":"DeepSeek-v4-flash-al","message":"保留修改草稿"}';
+ await page.getByLabel('请求路径',{exact:true}).fill(editedPath);await page.getByLabel('请求正文',{exact:true}).fill(editedBody);
+ await page.locator('.request-panel').getByRole('button',{name:'请求头',exact:true}).click();await page.getByLabel('请求头 JSON').fill('{"X-Test":"keep"}');await page.locator('.request-panel').getByRole('button',{name:'正文',exact:true}).click();
+ const beforeCases=await (await page.request.get('/api/cases?limit=1')).json(),beforeRuns=await (await page.request.get('/api/runs?limit=1')).json();
+ await expect(page.locator('.request-footer').getByRole('button')).toHaveCount(2);
+ await expect(page.getByRole('button',{name:'OpenAI',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'SSE 示例',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'示例模板',exact:true})).toHaveCount(0);
+ const resultPanel=page.locator('.response-panel');await resultPanel.getByRole('button',{name:'结果示例',exact:true}).click();await expect(resultPanel.getByLabel('结果示例内容')).toContainText('data: [DONE]');
+ await resultPanel.getByLabel('结果示例格式').selectOption('json');await expect(resultPanel.getByLabel('结果示例内容')).toContainText('chat.completion');
+ await expect(page.getByLabel('请求路径',{exact:true})).toHaveValue(editedPath);await expect(page.getByLabel('请求正文',{exact:true})).toHaveValue(editedBody);await expect(page.getByLabel('请求名称')).toHaveValue(original.name);
+ await expect(page.getByRole('combobox',{name:'执行环境',exact:true})).toContainText('测试环境');await expect(page.getByLabel('最终地址')).toContainText('/ibrain-common');
+ await page.locator('.request-panel').getByRole('button',{name:'请求头',exact:true}).click();await expect(page.getByLabel('请求头 JSON')).toHaveValue('{"X-Test":"keep"}');
+ await page.getByRole('button',{name:'保存用例',exact:true}).click();await expect(page.getByRole('alert')).toContainText('用例已保存');
+ const saved=await (await page.request.get('/api/cases/'+original.id)).json();expect(saved.request.path).toBe(editedPath);expect(JSON.parse(saved.request.body).message).toBe('保留修改草稿');
+ expect((await (await page.request.get('/api/cases?limit=1')).json()).total).toBe(beforeCases.total);expect((await (await page.request.get('/api/runs?limit=1')).json()).total).toBe(beforeRuns.total);
+ await chooseDemoEnvironment(page);await page.getByLabel('请求路径',{exact:true}).fill('/slow');await page.getByRole('button',{name:'发送请求'}).click();
+ await resultPanel.getByRole('button',{name:'结果示例',exact:true}).click();await expect(resultPanel.getByLabel('结果示例内容')).toBeVisible();await expect(page.getByLabel('请求路径',{exact:true})).toHaveValue('/slow');await expect(page.locator('.status-pill').last()).toContainText('已完成');
+ expect((await (await page.request.get('/api/runs?limit=1')).json()).total).toBe(beforeRuns.total+1);
+});

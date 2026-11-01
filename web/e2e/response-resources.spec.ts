@@ -1,0 +1,21 @@
+import {test,expect} from '@playwright/test';
+import {execFileSync} from 'node:child_process';
+import path from 'node:path';
+import {chooseDemoEnvironment} from './helpers';
+test('响应媒体自动入库并关联来源请求',async({page})=>{
+ const root=path.resolve('..');await page.goto('/');
+ const code=execFileSync(path.join(root,'.venv/Scripts/python.exe'),['-m','api_post','pair','--port','18767','--workspace',process.env.API_LAB_E2E_WORKSPACE!],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();
+ await page.getByLabel('本机配对码').fill(code);await page.getByRole('button',{name:'连接工作区'}).click();await chooseDemoEnvironment(page);
+ const suffix='auto-response-'+Date.now();
+ await page.getByLabel('请求名称').fill(suffix);
+ await page.getByLabel('请求正文',{exact:true}).fill(JSON.stringify({image_url:'https://media.invalid/'+suffix+'.png',video_url:'https://media.invalid/'+suffix+'.mp4',audio_url:'https://media.invalid/'+suffix+'.mp3'}));
+ await page.getByRole('button',{name:'发送请求'}).click();await expect(page.locator('.status-pill').last()).toContainText('已完成');
+ await expect(page.locator('.response-content')).toContainText('3 项资源已记录到资源库');
+ await page.getByRole('button',{name:'查看资源库',exact:false}).click();await page.getByLabel('搜索资源').fill(suffix);
+ await expect(page.locator('.resource-row')).toHaveCount(3);
+ await expect(page.locator('.resource-table')).toContainText('响应自动入库');
+ await page.locator('.resource-row').first().getByRole('button',{name:'来源请求',exact:false}).click();
+ await expect(page.getByRole('region',{name:'历史请求快照'})).toContainText('请求快照');
+ await expect(page.getByLabel('快照请求名称')).toHaveValue(suffix);
+ await expect(page.locator('.response-content')).toContainText('3 项资源已记录到资源库');
+});
