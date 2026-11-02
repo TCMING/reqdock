@@ -150,6 +150,11 @@ class OwnedService:
                 pass
 
 
+def attach_memory_policy(window):
+    from .webview_memory import attach
+    return attach(window)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke-test", action="store_true")
@@ -206,14 +211,16 @@ def main():
         )
         initialized = threading.Event()
         paired = False
+        memory_policy = None
 
         def loaded():
-            nonlocal paired
+            nonlocal paired, memory_policy
             if paired:
                 return
             if window.get_current_url().rstrip("/") != "http://127.0.0.1:18765":
                 return
             paired = True
+            memory_policy = attach_memory_policy(window)
             access = call_local(root, 18765, "/api/auth/session")
             if access.get("access_mode") == "local":
                 initialized.set()

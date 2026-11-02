@@ -1,4 +1,4 @@
-import React,{useEffect,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import type {Resource} from './ResourceLibrary';
 type Props={resource:Resource;api:<T=any>(path:string,options?:RequestInit)=>Promise<T>;onClose:()=>void;onChanged:()=>void};
 export default function MediaPreview({resource,api,onClose,onChanged}:Props){
@@ -19,9 +19,11 @@ export default function MediaPreview({resource,api,onClose,onChanged}:Props){
   setJob(await api('/resources/'+current.id+'/download',{method:'POST',body:JSON.stringify({revision:current.revision,address_id:link?.id})}));onChanged();
  }catch(e){setError((e as Error).message);}finally{setBusy(false);}}
  const local=!!value.file&&!value.file_missing,src='/api/resources/'+value.id+'/file?revision='+value.revision;
+ const media=useRef<HTMLMediaElement|null>(null);
+ useEffect(()=>{const node=media.current;return()=>{if(node){node.pause();node.removeAttribute('src');node.load();}};},[src,local]);
  return <div className="modal-backdrop"><section className="modal media-preview" role="dialog" aria-label="资源预览"><div className="modal-title"><h2>{value.name} · v{value.revision}</h2><button className="text-button" onClick={onClose}>关闭 ×</button></div>
  {error&&<div className="notice error" role="alert">{error}</div>}
- {local?<><div className="media-stage">{value.kind==='image'?<img alt={value.name} src={src} onError={()=>setMediaError(true)}/>:value.kind==='video'?<video key={src} controls playsInline preload="metadata" src={src} onError={()=>setMediaError(true)}/>:<audio key={src} controls preload="metadata" src={src} onError={()=>setMediaError(true)}/>}</div>
+ {local?<><div className="media-stage">{value.kind==='image'?<img alt={value.name} src={src} onError={()=>setMediaError(true)}/>:value.kind==='video'?<video ref={media as React.RefObject<HTMLVideoElement>} key={src} controls playsInline preload="metadata" src={src} onError={()=>setMediaError(true)}/>:<audio ref={media as React.RefObject<HTMLAudioElement>} key={src} controls preload="metadata" src={src} onError={()=>setMediaError(true)}/>}</div>
  {mediaError&&<div className="notice error">无法预览，请检查文件是否完整或浏览器是否支持该媒体编码，可另存后用本机播放器打开。</div>}
  <p className="field-note">{value.file?.filename} · {value.file?.mime} · 本地文件预览</p><a href={src+'&download=true'} download>另存本地文件</a></>:<>
  <p className="field-note">{value.file_missing?'本地文件已丢失。':'此资源还没有本地文件。'}下载保存后即可预览图片、播放视频和音频。</p>
