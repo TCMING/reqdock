@@ -14,6 +14,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import httpx
 from .security import Vault
+from .runtime_config import workspace_for
 
 
 def call_local(workspace, port, path, method="GET"):
@@ -48,10 +49,10 @@ def main():
     parser.add_argument(
         "--workspace",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "workspace",
+        default=None,
     )
     args = parser.parse_args()
-    root = args.workspace.resolve()
+    root = (args.workspace or workspace_for(Path(__file__).resolve().parents[2])).resolve()
     if not 1024 <= args.port <= 65535:
         parser.error("端口应在 1024–65535 之间")
     if args.command == "serve":

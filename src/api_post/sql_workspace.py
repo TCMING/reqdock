@@ -23,7 +23,8 @@ from fastapi import APIRouter, Query
 from fastapi.responses import Response
 from pydantic import Field, field_validator
 from typing import Literal
-from .models import StrictModel
+from .models import StrictModel, ExecutionContext
+from . import executions
 from .storage import atomic, now
 from .private_data import transform
 from .security import sensitive, redact, safe_text
@@ -67,6 +68,7 @@ class ConnectionInput(StrictModel):
 
 
 class SQLText(StrictModel):
+    execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
     connection_id: UUID
     database: str = Field(min_length=1, max_length=64)
     sql: str = Field(min_length=1, max_length=131072)
@@ -116,6 +118,7 @@ class SQLWorkspace:
         self.closed = False
         with store.lock:
             store.db.execute('CREATE TABLE IF NOT EXISTS sql_runs (id TEXT PRIMARY KEY, created TEXT, summary TEXT)')
+            executions.recover_sql(store.db)
             store.db.commit()
 
     def read(self, path, default=None):
@@ -211,9 +214,10 @@ class SQLWorkspace:
         if self.closed:return
         value={k:v for k,v in job.items() if not k.startswith('_')}
         self.encrypted(self.root/'runs'/job['id']/'record.json',value)
-        summary={k:value.get(k) for k in ('id','created_at','connection_id','connection_name','environment','database','state','mode','elapsed_ms','row_count')}
+        summary={k:value.get(k) for k in ('id','created_at','connection_id','connection_name','environment','database','state','mode','elapsed_ms','row_count','execution_context')}
         with self.store.lock:
             self.store.db.execute('INSERT INTO sql_runs VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET summary=excluded.summary',(value['id'],value['created_at'],json.dumps(summary,ensure_ascii=False)))
+            executions.index(self.store.db, 'sql', value)
             self.store.db.commit()
 
     def record(self,id):
@@ -405,7 +409,9 @@ class SQLWorkspace:
             if count>=10000:raise ValueError('SQL执行记录已达10000条，请先整理本地记录')
             e=self.lease(p,data.database)
             job={'id':str(uuid4()),'created_at':now(),'connection_id':p['id'],'connection_name':p['name'],'environment':p['environment'],'host':p['host'],'port':p['port'],'database':data.database,'sql':text,'state':'running','mode':'explain' if data.explain else kind,'row_count':0,'columns':[],'rows':[],'messages':[],'_entry':e,'_tree':tree,'_start':time.monotonic(),'_timeout':data.timeout}
-            try:self.persist(job)
+            try:
+                job['execution_context']={**redact(data.execution_context.model_dump(), [self.vault.get('sql-password:'+p['id']) or '']), 'source':data.execution_context.source}
+                self.persist(job)
             except Exception:self.release(e);raise
             self.jobs[job['id']]=job
             self.spawn(lambda:self.execute(job,kind))

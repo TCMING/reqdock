@@ -26,3 +26,6 @@ web/playwright-report/
 *.exe
 .DS_Store
 Thumbs.db
+
+# Machine-specific installed Skill paths
+skills/reqdock/config.json

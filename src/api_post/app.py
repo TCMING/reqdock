@@ -32,6 +32,8 @@ from .models import (
 from .network import validate_environment
 from .security import Auth, Vault, sensitive
 from .storage import Store, now
+from . import executions
+from typing import Literal
 from .openapi_import import Importer
 from .resources import ResourceManager
 from .environment_groups import EnvironmentGroups, protect_variables
@@ -387,6 +389,22 @@ def create_app(root: Path, port=18765, vault=None):
         await asyncio.to_thread(vault.delete, "credential:" + str(id))
         (store.path("credentials", id) / "current.json").unlink(missing_ok=True)
         return {"ok": True}
+
+    @app.get("/api/executions")
+    async def execution_records(
+        page: int = Query(1, ge=1, le=1000000),
+        limit: int = Query(20, ge=1, le=100),
+        kind: Literal["api", "sql"] | None = None,
+        source: Literal["ui", "cli", "skill", "api", "unknown"] | None = None,
+        agent_name: str = Query("", max_length=80),
+        task_id: str = Query("", max_length=128),
+        environment: str = Query("", max_length=200),
+        state: str = Query("", max_length=40),
+        search: str = Query("", max_length=120),
+    ):
+        return await asyncio.to_thread(executions.page, store, page, limit,
+            kind=kind, source=source, agent_name=agent_name, task_id=task_id,
+            environment=environment, state=state, search=search)
 
     @app.post("/api/runs")
     async def start_run(data: RunInput):

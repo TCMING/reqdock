@@ -4,7 +4,7 @@
 
 A lightweight, on-demand local workspace for APIs, SQL, and AI agents.
 
-在一个工作台里管理 API 请求、SQL 查询和测试资源，减少重复配置与工具切换。现已支持本地 API 请求记录、SQL 执行记录，以及界面与 CLI / Skill 共用 API 用例和请求记录；Agent / 任务来源标记与统一使用统计列入后续规划。
+在一个工作台里管理 API 请求、SQL 查询和测试资源，减少重复配置与工具切换。现已支持 API / SQL 统一执行记录、调用来源与 Agent / 任务标识。界面与 CLI / Skill 共用本地 API 用例和请求记录，Agent 也可通过 SQL CLI 创建受现有策略保护的执行任务；成功率等汇总统计仍在规划中。
 
 ## 为什么选择 ReqDock
 
@@ -14,9 +14,9 @@ A lightweight, on-demand local workspace for APIs, SQL, and AI agents.
 | **面向低内存占用设计** | 请求并发和等待队列有上限，响应体与流式记录有大小限制；流式展示按窗口分段加载，避免把全部历史事件持续留在页面内存中。后端还会检查内存占用，超出准入阈值时拒绝新增 API 请求。 |
 | **数据库连接及时回收** | 每个连接配置下的每个库最多保留 3 条连接，空闲 60 秒自动回收；SQL 执行线程按需创建、完成后退出，查询最长 5 分钟。 |
 | **一个入口处理 API 与 SQL** | API 调试、MySQL/MariaDB 查询和媒体资源管理放在同一个程序中，两个工作空间的数据分别保存。 |
-| **手动操作与 Agent 调用共用 API 记录** | 界面、CLI 和 Skill 复用同一套 API 环境、用例、资源与请求记录；Agent 经 CLI / Skill 发起的 API 请求也会保存，可回到界面检查。当前尚未自动标记 Agent 身份或任务归属。 |
+| **手动操作与 Agent 调用共用 API 记录** | 界面、CLI 和 Skill 复用同一套 API 环境、用例、资源与请求记录；Agent 经 CLI / Skill 发起的 API 请求也会保存，可回到界面检查。界面操作标记为 UI，CLI / Skill 可声明来源、Agent 名称和任务标识，记录可按同一任务查询。 |
 | **本地保存，开箱无需云账号** | 不需要注册 ReqDock 云账号，也不需要部署 Docker、服务端数据库或云服务。数据保存在本机，密钥使用 Windows 系统凭证库保护。被测接口和数据库仍使用各自的账号与权限。 |
-| **API 与 SQL 执行有据可查** | API 自动保存请求快照、请求头、响应头、响应内容和耗时，并对已知敏感字段脱敏；SQL 独立保存语句、目标库、执行状态、耗时与结果。两类历史目前分别查看，统一统计仍在规划中。 |
+| **API 与 SQL 执行有据可查** | API 自动保存请求快照、请求头、响应头、响应内容和耗时，并对已知敏感字段脱敏；SQL 独立保存语句、目标库、执行状态、耗时与结果。两类历史既可分别查看，也可在统一执行记录中筛选与查看详情；汇总统计仍在规划中。 |
 | **用例与资源可以反复使用** | 支持粘贴 cURL、导入 OpenAPI、切换环境，以及复用图片、视频和音频资源，减少每次从头组装请求的工作。 |
 
 **关于内存占用：** 上述是已经实现的资源控制机制。实际占用取决于 WebView2、打开的页面和数据量；目前没有发布统一的内存基准测试，不承诺固定 MB 数值或相对其他工具的降幅。内存准入检查针对 API 后端进程，不是整个客户端的系统级内存硬上限。
@@ -34,26 +34,24 @@ A lightweight, on-demand local workspace for APIs, SQL, and AI agents.
 | --- | --- |
 | **API 工作空间** | HTTP/JSON 请求、粘贴解析 cURL、导入 OpenAPI、环境变量、用例分类与结果示例。 |
 | **API 请求记录** | 界面、CLI、Skill 经 ReqDock 发送的请求共享记录；可查看请求与响应、请求头与响应头、状态、耗时、错误及 SSE 事件。 |
-| **Agent API 调用入口** | Agent 可通过 CLI / Skill 查找环境与用例、发送已授权的 API 请求，并按运行 ID 查询同一份执行记录。无需单独维护另一套测试数据。 |
+| **Agent API / SQL 调用入口** | 通过 CLI / Skill 发起 API 请求，或使用 SQL CLI 创建查询 / EXPLAIN 任务；可声明来源、Agent 和任务标识。SQL 写入继续受原有开关和逐次确认限制，CLI 不自动确认。 |
+| **统一执行记录** | 同一页面查看 API / SQL 元数据，按类型、来源、Agent、任务、环境和状态筛选，分页查看只读详情；原请求记录、SQL 历史和编辑草稿保留。 |
 | **SQL 工作空间** | MySQL / MariaDB、按环境管理连接、库表浏览、字段与结构缓存、常用 SQL、选中语句执行和 EXPLAIN。 |
 | **SQL 执行记录与导出** | 记录目标连接、环境、数据库、SQL、状态、耗时及已保存结果；查看消息、摘要和数据，导出 CSV / JSON。 |
 | **受控 SQL 写入** | 可单独启用受保护的 UPDATE / DELETE 与 CREATE TABLE，并在执行前确认；数据库账号权限仍然生效。 |
 | **媒体资源库** | 图片、视频、音频的 URL / 文件管理、预览、用例复用，以及从响应中采集资源。 |
 | **轻量运行与资源回收** | WebView2 客户端按需启动与退出；限制请求并发、队列和响应大小，SQL 空闲连接 60 秒回收。 |
 
-**当前记录能力的边界：** Agent 经 CLI / Skill 发出的 API 请求已经有记录，但目前不会自动区分来自界面、CLI 还是 Skill，也不能按 Agent 或任务聚合。SQL 的专用 CLI / Skill 调用入口尚未提供。现有历史记录不等同于已具备统一的 Agent 监控面板。
+**当前记录能力的边界：** 来源与 Agent / 任务标识由调用方声明，仅供关联查询，不代表经过认证的身份，也不参与授权。旧记录标为来源未知，不猜测原始调用方。只记录已被接收并创建执行任务的 API / SQL 操作；在参数校验或权限检查阶段就被拒绝的调用，以及配置管理、目录查询等控制接口，暂不计入执行记录。HTTP 200 / 已完成不等于业务成功。
 
 ## 规划中 / Planned
 
 以下尚未实现，不作为当前版本功能承诺，也不包含确定的交付日期。
 
-- **调用来源标记**：区分界面、CLI、Skill，关联 Agent 名称及任务标识。
-- **Agent SQL 调用入口**：让 Agent 通过统一入口执行已授权 SQL，复用 SQL 连接策略、写入确认和执行记录。
-- **统一执行记录视图**：在同一处检索 API 与 SQL 操作，按调用来源、Agent、任务、环境、状态和时间筛选。
-- **使用情况统计**：展示调用次数、成功率、错误分布和耗时，支持查看具体执行详情。
-- **任务执行追踪**：串联同一任务内的 API 请求与 SQL 操作，方便回溯问题和复用流程。
+- **使用情况统计**：按来源、Agent、任务和环境汇总调用次数、耗时与错误分布；区分执行状态、HTTP 状态和业务判定，避免把“已完成”直接当作业务成功。
+- **任务时间线**：在现有任务标识筛选的基础上，提供跨 API / SQL 的执行顺序与关联视图。
 
-**监控范围：只记录经过 ReqDock 发起的操作。** 不采集绕过 ReqDock 的 Agent 行为，不监听其他软件的流量。规划中的统计优先复用执行事件与本地记录，按需查询，延续轻量化设计；首批聚焦 API 与 SQL，不扩展为外部办公软件集成平台。
+**监控范围：只记录经过 ReqDock 发起的操作。** 不采集绕过 ReqDock 的 Agent 行为，不监听其他软件流量。当前统一列表复用原执行链路，只维护小型 SQLite 元数据索引，不复制请求 / SQL 正文与结果，不新增采集线程或常驻轮询；每页默认 20 条、最多 100 条，详情点击时才读取。界面切换保留 API 和 SQL 草稿；离开统一页面释放已打开的详情。首批聚焦 API 与 SQL。
 
 ## Requirements
 
@@ -80,6 +78,31 @@ The browser address is http://127.0.0.1:18765 while the client is running. A new
 
 For browser-only usage, start with `scripts/start.ps1 -OpenBrowser`, and stop with `scripts/stop.ps1`.
 
+## Codex / Claude Code 全局 Skill
+
+仓库自带 `skills/reqdock/`，包含通用 `SKILL.md`、跨项目调用脚本与 Codex 展示元数据。安装后两个客户端共用一个 ReqDock 实例与工作区，无需为每个编码项目重复配置。
+
+在 ReqDock 项目目录完成运行环境安装后执行：
+
+```powershell
+powershell -NoProfile -File scripts/install-skills.ps1
+# 若要保留已有 ReqDock / API Lab 工作区，可显式指定原目录；不移动文件：
+powershell -NoProfile -File scripts/install-skills.ps1 -Workspace 'C:\path\to\existing\workspace'
+```
+
+| 客户端 | 全局安装位置 | 使用方式 |
+| --- | --- | --- |
+| Codex | `~/.agents/skills/reqdock/` | 在新会话中使用 `$reqdock`，也可按任务自动选择。 |
+| Claude Code | `~/.claude/skills/reqdock/` | 在新会话中使用 `/reqdock`。 |
+
+可通过 `-Client Codex` 或 `-Client ClaudeCode` 单独安装。安装器不修改客户端的模型、登录、权限或其他 Skill 配置；已有同名 Skill 和 ReqDock 路径配置会先备份到 `%LOCALAPPDATA%/ReqDock/skill-backups/`。旧 `api-lab` Skill 保留，新版入口使用 `reqdock` 名称。
+
+每个已安装 Skill 的 `config.json` 只保存程序路径与默认 Agent 名称，不包含密钥。`%LOCALAPPDATA%/ReqDock/runtime.json` 选择共享工作区，客户端、服务和 CLI 使用同一目录；沿用原路径时，原 Windows 凭证库归属不变。配置仅影响匹配的 ReqDock checkout，其他 checkout 不会自动采用它。
+
+Skill 的 `scripts/reqdock.py` 可从任意编码项目执行，自动补充 `source=skill` 和 `Codex` / `ClaudeCode` 名称；执行时未给任务标识则生成新的 ID。需要关联多次 API / SQL 操作时应显式传入相同 `--task-id`。调用脚本不执行 Shell、不绕过本机权限，也不自动确认 SQL 写入。客户端关闭后可由 Skill 的 `start` 命令按需打开，不安装常驻采集服务。
+
+**验证范围**：双端安装入口可用隔离的模拟 API / MySQL 服务实测，并确认统一记录中的 Agent 与任务标识；这不等同于已经验证各客户端远端模型会自动选择 Skill。加载新 Skill 可能需要新开会话，执行仍受各客户端原有权限设置约束。
+
 ## CLI and Skill
 
 With the client running:
@@ -91,7 +114,17 @@ With the client running:
 .\.venv\Scripts\python.exe -m api_post.skill_cli run --case CASE_UUID --environment ENVIRONMENT_NAME --platform PLATFORM_NAME --wait 30
 ```
 
-See [the portable Skill](skills/reqdock/SKILL.md). Internal Python module names remain `api_post` for compatibility.
+为 Agent 调用标记来源并关联同一任务（名称仅为示例，不包含真实凭证）：
+
+```powershell
+.\.venv\Scripts\python.exe -m api_post.skill_cli run --case CASE_UUID --environment ENVIRONMENT_NAME --platform PLATFORM_NAME --source skill --agent Codex --task-id TASK_ID --wait 30
+.\.venv\Scripts\python.exe -m api_post.skill_cli sql-run --connection CONNECTION_UUID --database DATABASE_NAME --sql-file query.sql --source skill --agent Codex --task-id TASK_ID --wait 30
+.\.venv\Scripts\python.exe -m api_post.skill_cli records --task-id TASK_ID
+```
+
+`--source` 默认 `cli`，Skill 应显式使用 `--source skill`。SQL CLI 只创建执行任务，不自动确认写入，也不自动重试。等待结束后仍在运行时，保留运行 ID，读取 `/api/runs/{id}` 或 `/api/sql/jobs/{id}`；不要重新提交。统一列表位于工作空间下拉菜单的“统一执行记录”。
+
+See [the portable Skill](skills/reqdock/SKILL.md) and [execution records design](docs/execution-records.md). Internal Python module names remain `api_post` for compatibility.
 
 ## Data and operational limits
 

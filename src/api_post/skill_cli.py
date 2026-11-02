@@ -10,6 +10,7 @@ from uuid import uuid4
 import httpx
 from .__main__ import call_local
 from .security import Vault
+from .runtime_config import workspace_for
 
 
 def main():
@@ -35,6 +36,15 @@ def main():
     p = sub.add_parser("runs")
     p.add_argument("--id")
     p.add_argument("--page", type=int, default=1)
+    p = sub.add_parser("records")
+    p.add_argument("--page", type=int, default=1)
+    p.add_argument("--kind", choices=["api", "sql"])
+    p.add_argument("--source", choices=["ui", "cli", "skill", "api", "unknown"])
+    p.add_argument("--agent", default="")
+    p.add_argument("--task-id", default="")
+    p.add_argument("--environment", default="")
+    p.add_argument("--state", default="")
+    p.add_argument("--search", default="")
     p = sub.add_parser("events")
     p.add_argument("id")
     p.add_argument("--offset", type=int, default=0)
@@ -47,9 +57,30 @@ def main():
     p.add_argument("--environment", required=True)
     p.add_argument("--platform", required=True)
     p.add_argument("--wait", type=float, default=0)
+    def context_arguments(command):
+        command.add_argument("--source", choices=["cli", "skill"], default="cli")
+        command.add_argument("--agent", default="")
+        command.add_argument("--task-id", default="")
+    context_arguments(p)
+    p = sub.add_parser("sql-run")
+    p.add_argument("--connection", required=True)
+    p.add_argument("--database", required=True)
+    p.add_argument("--sql-file", type=Path, required=True)
+    p.add_argument("--explain", action="store_true")
+    p.add_argument("--timeout", type=int, default=300)
+    p.add_argument("--wait", type=float, default=0)
+    context_arguments(p)
     args = parser.parse_args()
+    if args.command in {"run", "sql-run"}:
+        from .models import ExecutionContext
+        try:
+            context = ExecutionContext(source=args.source, agent_name=args.agent, task_id=args.task_id).model_dump()
+        except ValueError:
+            raise ValueError("调用来源或Agent/任务标识不合法，请检查长度与控制字符") from None
+        if not 0 <= args.wait <= 60:
+            parser.error("--wait must be between 0 and 60 seconds")
     root = Path(__file__).resolve().parents[2]
-    workspace = (args.workspace or root / "workspace").resolve()
+    workspace = (args.workspace or workspace_for(root)).resolve()
     if not 1024 <= args.port <= 65535:
         parser.error("Invalid local port")
     if args.command == "start":
@@ -138,6 +169,14 @@ def main():
                     ),
                 },
             )
+        elif args.command == "records":
+            result = api("GET", "/executions", params={
+                key: value for key, value in {
+                    "page": args.page, "limit": 20, "kind": args.kind,
+                    "source": args.source, "agent_name": args.agent, "task_id": args.task_id,
+                    "environment": args.environment, "state": args.state, "search": args.search,
+                }.items() if value is not None and value != ""
+            })
         elif args.command == "runs":
             result = api(
                 "GET",
@@ -152,6 +191,20 @@ def main():
             )
         elif args.command == "cancel":
             result = api("POST", "/runs/" + id(args.id) + "/cancel")
+        elif args.command == "sql-run":
+            path = args.sql_file.resolve()
+            if not path.is_file() or path.stat().st_size > 128 * 1024:
+                raise ValueError("SQL文件不存在或超过128 KiB")
+            result = api("POST", "/sql/jobs", json={
+                "connection_id": id(args.connection), "database": args.database,
+                "sql": path.read_text(encoding="utf-8-sig"), "explain": args.explain,
+                "timeout": args.timeout, "execution_context": context,
+            })
+            deadline = time.monotonic() + args.wait
+            while result["state"] == "running" and time.monotonic() < deadline:
+                time.sleep(0.5)
+                result = api("GET", "/sql/jobs/" + result["id"])
+            # Awaiting-confirmation is returned as-is. This command never confirms writes.
         else:
             if not 0 <= args.wait <= 60:
                 parser.error("--wait must be between 0 and 60 seconds")
@@ -178,6 +231,7 @@ def main():
                 if not isinstance(request, dict):
                     raise ValueError("请求文件必须是JSON对象")
             request.update(
+                execution_context=context,
                 environment_id=members[0]["environment"]["id"],
                 submission_key=str(uuid4()),
             )
