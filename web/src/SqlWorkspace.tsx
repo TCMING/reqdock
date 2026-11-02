@@ -24,7 +24,23 @@ export default function SqlWorkspace({onSpaceChange}:{onSpaceChange:(s:string)=>
  async function refresh(){const [p,e]=await Promise.all([api<Profile[]>('/connections'),api<string[]>('/environments')]);setProfiles(p);setEnvironments(e);setHistory(await api('/jobs'));setPools(await api('/pools'));}
  useEffect(()=>{let live=true;fetch('/api/auth/session').then(r=>{if(!r.ok)throw Error('本机服务暂不可用，请确认客户端已启动');return r.json();}).then(async s=>{csrf.current=s.csrf;if(live)await refresh();}).catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[]);
  const running=[...new Set(tabs.filter(t=>t.job&&t.job.state==='running').map(t=>t.job!.id))].join(',');
- useEffect(()=>{if(!running)return;let stop=false;const tick=async()=>{for(const id of running.split(',')){try{const epoch=jobEpoch.current.get(id)||0;const value=await api<Job>('/jobs/'+id);if(stop)return;if(epoch!==(jobEpoch.current.get(id)||0))continue;setTabs(old=>old.map(t=>t.job?.id===id?{...t,job:value}:t));if(value.state==='awaiting_confirmation'){setPending(value);setAck(false);}if(value.state!=='running'){setHistory(await api('/jobs'));setPools(await api('/pools'));}}catch(e){if(!stop)setError((e as Error).message);}}};const timer=window.setInterval(tick,600);tick();return()=>{stop=true;clearInterval(timer);};},[running]);
+ useEffect(()=>{
+  if(!running)return;let stop=false,inFlight=false,timer:number|undefined;
+  const tick=async()=>{
+   if(stop||inFlight)return;inFlight=true;
+   try{for(const id of running.split(',')){try{
+    const epoch=jobEpoch.current.get(id)||0,value=await api<Job>('/jobs/'+id);
+    if(stop)return;if(epoch!==(jobEpoch.current.get(id)||0))continue;
+    setTabs(old=>old.map(t=>t.job?.id===id?{...t,job:value}:t));
+    if(value.state==='awaiting_confirmation'){setPending(value);setAck(false);}
+    if(value.state!=='running'){setHistory(await api('/jobs'));setPools(await api('/pools'));}
+   }catch(e){if(!stop)setError((e as Error).message);}}}
+   finally{inFlight=false;if(!stop)timer=window.setTimeout(tick,document.hidden?2000:600);}
+  };
+  const visible=()=>{if(!document.hidden&&!inFlight){clearTimeout(timer);void tick();}};
+  document.addEventListener('visibilitychange',visible);void tick();
+  return()=>{stop=true;clearTimeout(timer);document.removeEventListener('visibilitychange',visible);};
+ },[running]);
  useEffect(()=>{if(!pending)return;const timer=setInterval(()=>{const n=Math.max(0,Math.ceil((pending.expires_at||0)-Date.now()/1000));setRemaining(n);if(!n){clearInterval(timer);api<Job>('/jobs/'+pending.id).then(value=>setTabs(old=>old.map(t=>t.job?.id===value.id?{...t,job:value}:t))).catch(()=>{});setPending(null);setError('写入确认已过期，未发送写SQL。');}},500);return()=>clearInterval(timer);},[pending?.id]);
  useEffect(()=>{let live=true;if(tab){const current={connection_id:tab.connection_id,database:tab.database};setSelected(current);setDocs([]);api<Doc[]>('/documents?connection_id='+current.connection_id+'&database='+encodeURIComponent(current.database)).then(items=>{if(live)setDocs(items);}).catch(e=>{if(live)setError(e.message);});}return()=>{live=false;};},[tab?.connection_id,tab?.database]);
  const chooseDatabase=useCallback(async(connection_id:string,database:string)=>{setSelected({connection_id,database});setDocs(await api('/documents?connection_id='+connection_id+'&database='+encodeURIComponent(database)));},[api]);
