@@ -10,6 +10,7 @@ from uuid import uuid4
 import httpx
 from .__main__ import call_local
 from .security import Vault
+from .runtime_config import workspace_for
 
 
 def main():
@@ -79,7 +80,7 @@ def main():
         if not 0 <= args.wait <= 60:
             parser.error("--wait must be between 0 and 60 seconds")
     root = Path(__file__).resolve().parents[2]
-    workspace = (args.workspace or root / "workspace").resolve()
+    workspace = (args.workspace or workspace_for(root)).resolve()
     if not 1024 <= args.port <= 65535:
         parser.error("Invalid local port")
     if args.command == "start":

@@ -1,0 +1,4 @@
+interface:
+  display_name: "ReqDock"
+  short_description: "Run API and SQL tasks with shared local execution history"
+  default_prompt: "Use $reqdock to run an authorized API or SQL check and inspect its execution record."

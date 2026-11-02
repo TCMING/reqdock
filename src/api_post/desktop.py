@@ -163,7 +163,8 @@ def main():
     shell.SetCurrentProcessExplicitAppUserModelID.restype = ctypes.c_long
     if shell.SetCurrentProcessExplicitAppUserModelID("ReqDock.LocalClient") < 0:
         raise OSError("Unable to set desktop application identity")
-    root = project / "workspace"
+    from .runtime_config import workspace_for
+    root = workspace_for(project)
     runtime = root / "runtime"
     runtime.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(

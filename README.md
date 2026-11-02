@@ -78,6 +78,31 @@ The browser address is http://127.0.0.1:18765 while the client is running. A new
 
 For browser-only usage, start with `scripts/start.ps1 -OpenBrowser`, and stop with `scripts/stop.ps1`.
 
+## Codex / Claude Code 全局 Skill
+
+仓库自带 `skills/reqdock/`，包含通用 `SKILL.md`、跨项目调用脚本与 Codex 展示元数据。安装后两个客户端共用一个 ReqDock 实例与工作区，无需为每个编码项目重复配置。
+
+在 ReqDock 项目目录完成运行环境安装后执行：
+
+```powershell
+powershell -NoProfile -File scripts/install-skills.ps1
+# 若要保留已有 ReqDock / API Lab 工作区，可显式指定原目录；不移动文件：
+powershell -NoProfile -File scripts/install-skills.ps1 -Workspace 'C:\path\to\existing\workspace'
+```
+
+| 客户端 | 全局安装位置 | 使用方式 |
+| --- | --- | --- |
+| Codex | `~/.agents/skills/reqdock/` | 在新会话中使用 `$reqdock`，也可按任务自动选择。 |
+| Claude Code | `~/.claude/skills/reqdock/` | 在新会话中使用 `/reqdock`。 |
+
+可通过 `-Client Codex` 或 `-Client ClaudeCode` 单独安装。安装器不修改客户端的模型、登录、权限或其他 Skill 配置；已有同名 Skill 和 ReqDock 路径配置会先备份到 `%LOCALAPPDATA%/ReqDock/skill-backups/`。旧 `api-lab` Skill 保留，新版入口使用 `reqdock` 名称。
+
+每个已安装 Skill 的 `config.json` 只保存程序路径与默认 Agent 名称，不包含密钥。`%LOCALAPPDATA%/ReqDock/runtime.json` 选择共享工作区，客户端、服务和 CLI 使用同一目录；沿用原路径时，原 Windows 凭证库归属不变。配置仅影响匹配的 ReqDock checkout，其他 checkout 不会自动采用它。
+
+Skill 的 `scripts/reqdock.py` 可从任意编码项目执行，自动补充 `source=skill` 和 `Codex` / `ClaudeCode` 名称；执行时未给任务标识则生成新的 ID。需要关联多次 API / SQL 操作时应显式传入相同 `--task-id`。调用脚本不执行 Shell、不绕过本机权限，也不自动确认 SQL 写入。客户端关闭后可由 Skill 的 `start` 命令按需打开，不安装常驻采集服务。
+
+**验证范围**：双端安装入口可用隔离的模拟 API / MySQL 服务实测，并确认统一记录中的 Agent 与任务标识；这不等同于已经验证各客户端远端模型会自动选择 Skill。加载新 Skill 可能需要新开会话，执行仍受各客户端原有权限设置约束。
+
 ## CLI and Skill
 
 With the client running:
