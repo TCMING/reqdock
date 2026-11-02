@@ -73,7 +73,22 @@ class EnvironmentGroupArchive(StrictModel):
     revision: int = Field(ge=0)
 
 
+class ExecutionContext(StrictModel):
+    # Caller-declared labels for correlation, never an authenticated identity.
+    source: Literal["ui", "cli", "skill", "api"] = "api"
+    agent_name: str = Field(default="", max_length=80)
+    task_id: str = Field(default="", max_length=128)
+
+    @field_validator("agent_name", "task_id")
+    @classmethod
+    def plain_label(cls, value):
+        if any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise ValueError("执行归属不能包含控制字符")
+        return value.strip()
+
+
 class RunInput(StrictModel):
+    execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
     case_id: UUID | None = None
     environment_id: UUID
     submission_key: UUID

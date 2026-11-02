@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 from .case_taxonomy import CaseTaxonomy
+from . import executions
 
 ID = re.compile(r"^[0-9a-f-]{36}$")
 
@@ -46,6 +47,8 @@ class Store:
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS cases (id TEXT PRIMARY KEY, source_key TEXT UNIQUE, summary TEXT)"
         )
+        self.db.commit()
+        executions.setup(self.db)
         self.db.commit()
         self.recover()
 
@@ -503,6 +506,7 @@ class Store:
                     json.dumps(summary, ensure_ascii=False),
                 ),
             )
+            executions.index(self.db, "api", value)
             self.db.commit()
 
     def run(self, id):

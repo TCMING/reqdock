@@ -1,0 +1,38 @@
+import {test,expect} from '@playwright/test';
+import {execFileSync} from 'node:child_process';
+import path from 'node:path';
+import fs from 'node:fs';
+import {randomUUID} from 'node:crypto';
+import {chooseDemoEnvironment} from './helpers';
+const root=path.resolve('..'),python=path.join(root,'.venv/Scripts/python.exe');
+
+test('API SQL 与 Skill 共用任务记录，筛选详情只读且切换保留草稿',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/');const code=execFileSync(python,['-m','api_post','pair','--port','18767','--workspace',process.env.API_LAB_E2E_WORKSPACE!],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();
+ await page.getByLabel('本机配对码').fill(code);await page.getByRole('button',{name:'连接工作区'}).click();
+ await chooseDemoEnvironment(page);const task='e2e-task-'+randomUUID();
+ const visible=()=>page.locator('.space-host:not([hidden])');
+ await visible().locator('.execution-context summary').click();await visible().getByLabel('Agent 名称',{exact:true}).fill('Codex');await visible().getByLabel('任务标识',{exact:true}).fill(task);
+ await page.getByLabel('请求名称').fill('unified UI API');await page.getByRole('button',{name:'发送请求',exact:false}).click();await expect(page.locator('.status-pill').last()).toContainText('已完成');
+ await page.getByLabel('请求正文',{exact:true}).fill('{"draft":"API unchanged"}');
+ const call=(args:string[])=>JSON.parse(execFileSync(python,['-m','api_post.skill_cli','--workspace',process.env.API_LAB_E2E_WORKSPACE!,'--port','18767',...args],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}));
+ const cases=call(['cases','--search','gemini']);
+ const api=call(['run','--case',cases.items[0].id,'--environment','本地环境','--platform','ibrain-common','--source','skill','--agent','Codex','--task-id',task,'--wait','10']);expect(api.state).toBe('completed');
+ const profile=await page.evaluate(async()=>{const session=await(await fetch('/api/auth/session')).json();const r=await fetch('/api/sql/connections',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrf},body:JSON.stringify({name:'unified fixture',environment:'测试环境',host:'127.0.0.1',port:18769,username:'fixture',password:'fixture-password',database:'lab',network_scope:'local',tls:false,allow_write:false,trusted:true})});if(!r.ok)throw Error('fixture profile failed');return r.json();});
+ await visible().getByLabel('工作空间',{exact:true}).selectOption('sql');const sql=page.locator('.sql-shell'),tree=page.getByLabel('数据库目录');
+ await tree.getByRole('button',{name:'展开环境 测试环境',exact:true}).click();await tree.getByRole('button',{name:'展开连接 unified fixture',exact:true}).click();await tree.getByRole('button',{name:'新建查询 unified fixture lab',exact:true}).click();
+ await sql.getByLabel('SQL编辑区').fill('SELECT id,name FROM records WHERE id<3');await sql.locator('.execution-context summary').click();await sql.getByLabel('Agent 名称',{exact:true}).fill('Codex');await sql.getByLabel('任务标识',{exact:true}).fill(task);
+ await sql.getByRole('button',{name:'▷ 运行选中 / 当前语句',exact:true}).click();await expect(sql.locator('.sql-results').first()).toContainText('已完成');await sql.getByLabel('SQL编辑区').fill('SELECT 99; -- SQL draft');
+ const file=path.join(process.env.API_LAB_E2E_WORKSPACE!,'fixture-unified-query.sql');fs.writeFileSync(file,'SELECT id FROM records WHERE id<3','utf8');
+ const query=call(['sql-run','--connection',profile.id,'--database','lab','--sql-file',file,'--source','skill','--agent','Codex','--task-id',task,'--wait','10']);expect(query.state).toBe('completed');
+ expect(call(['records','--task-id',task]).total).toBe(4);
+ await visible().getByLabel('工作空间',{exact:true}).selectOption('records');await expect(visible().getByRole('heading',{name:'统一执行记录'})).toBeVisible();
+ await visible().getByLabel('任务标识',{exact:true}).fill(task);await visible().getByRole('button',{name:'查询',exact:true}).click();await expect(visible().locator('.execution-table tbody tr')).toHaveCount(4);
+ await page.screenshot({path:path.join(process.env.API_LAB_E2E_WORKSPACE!,'execution-history.png'),fullPage:true});
+ await visible().getByLabel('调用来源',{exact:true}).selectOption('skill');await visible().getByLabel('类型',{exact:true}).selectOption('sql');await visible().getByRole('button',{name:'查询',exact:true}).click();await expect(visible().locator('.execution-table tbody tr')).toHaveCount(1);
+ await visible().getByRole('button',{name:'查看执行记录 '+query.id,exact:true}).click();await expect(page.getByRole('dialog')).toContainText('SELECT id FROM records');await page.getByRole('dialog').getByRole('button',{name:'关闭 ×'}).click();
+ let reads=0;page.on('request',r=>{if(r.url().includes('/api/executions'))reads++;});await page.waitForTimeout(900);expect(reads).toBe(0);
+ await visible().getByLabel('工作空间',{exact:true}).selectOption('api');await expect(visible().getByLabel('请求正文',{exact:true})).toHaveValue('{"draft":"API unchanged"}');
+ await visible().getByLabel('工作空间',{exact:true}).selectOption('sql');await expect(sql.getByLabel('SQL编辑区')).toHaveValue('SELECT 99; -- SQL draft');
+ expect(errors).toEqual([]);
+});

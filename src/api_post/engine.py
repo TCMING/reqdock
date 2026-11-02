@@ -273,7 +273,9 @@ class Engine:
                 raise ValueError("相同提交标识对应不同请求")
             return await asyncio.to_thread(self.store.run, row[0])
         self.admission()
+        context = {**redact(data["execution_context"], known), "source": data["execution_context"]["source"]}
         snapshot = {
+            "execution_context": context,
             "name": data["name"],
             "environment_id": env["id"],
             "environment_name": env["name"],
@@ -283,6 +285,7 @@ class Engine:
             "environment": env,
             "request": {
                 **data,
+                "execution_context": context,
                 "path": redact_url(data["path"]),
                 "headers": redact(headers, known),
                 "configured_headers": redact(headers, known),
